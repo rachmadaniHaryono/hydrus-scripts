@@ -1,8 +1,5 @@
 # hydrus-scripts
 
-[![PyPI package](https://img.shields.io/pypi/v/hydrus_scripts)](https://pypi.python.org/pypi/hydrus_scripts)
-[![Build status](https://travis-ci.com/rachmadaniharyono/hydrus_scripts)](https://travis-ci.com/github/rachmadaniharyono/hydrus_scripts)
-
 personal hydrus scripts
 
 ## Features
@@ -13,7 +10,7 @@ personal hydrus scripts
 You can install `hydrus_scripts` using `pip` with
 
 ```bash
-pip3 install hydrus_scripts
+pip3 install https://github.com/rachmadaniHaryono/hydrus-scripts/archive/refs/heads/main.zip
 ```
 
 or you can simply download `hydrus_scripts.py` and then run it using `python3` with
