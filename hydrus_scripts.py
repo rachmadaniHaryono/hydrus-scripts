@@ -1,46 +1,26 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
-'''personal hydrus scripts
-'''
+"""personal hydrus scripts
+"""
+import click
 
-__author__ = '''rachmadani haryono'''
-__email__ = '''foreturiga@gmail.com'''
-__version__ = '''0.1.0'''
-
-
-from argparse import ArgumentParser, Namespace
-
-parser = ArgumentParser(description=__doc__)
-parser.add_argument('--version',
-                    help='Print version number',
-                    default=False,
-                    action='store_true')
-
-subparsers = parser.add_subparsers(title='subcommands', dest='subcommand',
-                                   help='Available subcommands')
-
-mycmd_parser = subparsers.add_parser('mycmd', help='An example subcommand')
-mycmd_parser.add_argument('-n', '--number',
-                          help='some number',
-                          default=17, type=int)
+__author__ = """rachmadani haryono"""
+__email__ = """foreturiga@gmail.com"""
+__version__ = """0.1.0"""
 
 
-def _mycmd(args: Namespace) -> None:
-    print('Running mycmd subcommand with n={}...'.format(args.number))
-    print('mycmd completed')
+@click.group()
+@click.version_option(__version__)
+@click.option("--debug/--no-debug", default=False)
+def main(debug):
+    click.echo(f"Debug mode is {'on' if debug else 'off'}")
 
 
-mycmd_parser.set_defaults(func=_mycmd)
+@main.command()
+def sync():
+    click.echo("Syncing")
 
 
-def main() -> None:
-    args = parser.parse_args()
-    if args.version:
-        print('''hydrus-scripts ''' + __version__)
-    elif hasattr(args, 'func'):
-        args.func(args)
-
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
