@@ -1,12 +1,16 @@
-import unittest
-
-from hydrus_scripts import parser
+import pytest
 
 
-class Testhydrus_scripts(unittest.TestCase):
+from hydrus_scripts import TagChanger
 
-    def test_argument_parsing(self):
-        args = parser.parse_args([])
-        self.assertEqual(args.version, False)
-        args = parser.parse_args(['--version'])
-        self.assertEqual(args.version, True)
+
+@pytest.mark.parametrize(
+    "test_input,expected",
+    [
+        ("t1\nt2\nt3\n\nt4\nt5", {"t1": {"t2", "t3"}, "t4": {"t5"}}),
+        ("t1\nt2\nt3  \n  \n  t4  \n  t5", {"t1": {"t2", "t3"}, "t4": {"t5"}}),
+        ("t1\nt2\nt3\n\n\nt4\nt5", {"t1": {"t2", "t3"}, "t4": {"t5"}}),
+    ],
+)
+def test_text_to_dict(test_input, expected):
+    assert TagChanger.text_to_dict(test_input) == expected
