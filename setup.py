@@ -12,7 +12,7 @@ with open("README.md") as readme_file:
 with open("HISTORY.md") as history_file:
     history = history_file.read()
 
-requirements = ["click", "pyyaml"]
+requirements = ["click", "pyyaml", "hydrus-api", "tqdm", "more_itertools"]
 
 test_requirements = []
 
