@@ -3,7 +3,13 @@
 
 """personal hydrus scripts
 """
+import collections
+import re
+
 import click
+import hydrus
+import more_itertools
+import tqdm
 import yaml
 
 __author__ = """rachmadani haryono"""
@@ -14,29 +20,109 @@ __version__ = """0.1.0"""
 @click.group()
 @click.version_option(__version__)
 @click.pass_context
-@click.argument("config_yaml", type=click.Path(exists=True))
 @click.option("--debug/--no-debug", default=False)
-def main(ctx, config_yaml, debug):
+def main(ctx, debug):
     click.echo(f"Debug mode is {'on' if debug else 'off'}")
-    if debug:
-        click.echo(click.format_filename(config_yaml))
-    with open(config_yaml) as f:
-        config = yaml.safe_load(f)
     # ensure that ctx.obj exists and is a dict (in case `cli()` is called
     # by means other than the `if` block below)
     ctx.ensure_object(dict)
 
     ctx.obj["DEBUG"] = debug
-    ctx.obj["CONFIG"] = config
+
+
+def load_config(config_yaml):
+    if config_yaml is not None:
+        with open(config_yaml) as f:
+            return yaml.safe_load(f)
 
 
 @main.command()
-@click.pass_context
-def print_access_key(ctx):
+@click.argument("config-yaml", type=click.Path(exists=True))
+def print_access_key(config_yaml):
+    config = load_config(config_yaml)
     try:
-        click.echo(f"access_key: {ctx.obj['CONFIG']['access_key']}")
+        click.echo(f"access_key: {config['access_key']}")
     except Exception:
         click.echo("error:no access_key")
+
+
+class TagChanger:
+    def __init__(self, tag_dict):
+        self.tag_dict = tag_dict
+
+    @staticmethod
+    def text_to_dict(text):
+        """convert text to dict."""
+        res = collections.defaultdict(set)
+        text = "\n".join(x.strip() for x in text.splitlines())
+        text = "\n\n".join(re.split("\n\n+", text))
+        for item in text.split("\n\n"):
+            tags = item.splitlines()
+            res[tags[0]].update(tags[1:])
+        return res
+
+    def handle_fmd(self, fmd):
+        tags = fmd["service_names_to_statuses_to_display_tags"]["my tags"]["0"]
+        for tag in self.tag_dict:
+            if tag in tags:
+                yield tag
+
+    def handle_key(self, key, hashes):
+        tag_data_dict = {"1": [key]}
+        if self.tag_dict[key]:
+            tag_data_dict["0"] = list(self.tag_dict[key])
+        return dict(
+            hashes=list(hashes),
+            service_to_action_to_tags={"my tags": tag_data_dict},
+        )
+
+    def run(self, client, tags_list):
+        fids = set(
+            more_itertools.flatten(
+                [client.search_files(list(x)) for x in tqdm.tqdm(tags_list)]
+            )
+        )
+        key_hashes = collections.defaultdict(set)
+        for chunk in tqdm.tqdm(list(more_itertools.chunked(fids, 128))):
+            for fmd in client.file_metadata(file_ids=chunk):
+                hash_ = fmd["hash"]
+                for key in self.handle_fmd(fmd):
+                    key_hashes[key].add(hash_)
+        for key, hashes in tqdm.tqdm(sorted(key_hashes.items())):
+            kwargs = self.handle_key(key, hashes)
+            if kwargs:
+                client.add_tags(**kwargs)
+
+
+class TagChangerF2(TagChanger):
+    @staticmethod
+    def text_to_dict(text):
+        """convert text to dict."""
+        res = collections.defaultdict(set)
+        text = "\n".join(x.strip() for x in text.splitlines())
+        text = "\n\n".join(re.split("\n\n+", text))
+        for item in text.split("\n\n"):
+            parts = item.splitlines()
+            main_tag = parts[0].strip()
+            for subitem in parts[1:]:
+                c_subitem = subitem.rsplit("(", 1)[0].strip()
+                res[c_subitem].add(main_tag)
+                res[c_subitem].add(c_subitem.split(main_tag, 1)[1].strip())
+        return res
+
+
+@main.command()
+@click.argument("config-yaml", type=click.Path(exists=True))
+@click.argument("tags-file", type=click.Path(exists=True))
+@click.option("--mode", default=1)
+def replace_tag(config_yaml, tags_file, mode):
+    config = load_config(config_yaml)
+    with open(tags_file) as f:
+        text = f.read()
+    obj_dict = {1: TagChanger, 2: TagChangerF2}
+    obj_cls = obj_dict[mode]
+    obj = obj_dict[mode](tag_dict=obj_cls.text_to_dict(text))
+    obj.run(hydrus.Client(config["access_key"]), [[x] for x in obj.tag_dict.keys()])
 
 
 if __name__ == "__main__":
