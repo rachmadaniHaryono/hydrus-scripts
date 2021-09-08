@@ -4,7 +4,9 @@
 """personal hydrus scripts
 """
 import collections
+import pprint
 import re
+from urllib.parse import urlparse
 
 import click
 import hydrus
@@ -123,6 +125,75 @@ def replace_tag(config_yaml, tags_file, mode):
     obj_cls = obj_dict[mode]
     obj = obj_dict[mode](tag_dict=obj_cls.text_to_dict(text))
     obj.run(hydrus.Client(config["access_key"]), [[x] for x in obj.tag_dict.keys()])
+
+
+@main.command()
+@click.argument("config-yaml", type=click.Path(exists=True))
+@click.argument("hashes-file", type=click.Path(exists=True))
+def count_netloc(config_yaml, hashes_file):
+    with open(hashes_file) as f:
+        text = f.read()
+    fmds = hydrus.Client(load_config(config_yaml)["access_key"]).file_metadata(
+        hashes=text.splitlines()
+    )
+    known_urls = list(more_itertools.flatten([x.get("known_urls", []) for x in fmds]))
+    pprint.pprint(collections.Counter([urlparse(x).netloc for x in known_urls]))
+
+
+@main.command()
+@click.argument("config-yaml", type=click.Path(exists=True))
+@click.argument("sibling-file", type=click.Path(exists=True))
+def count_sibling(config_yaml, sibling_file):
+    with open(sibling_file) as f:
+        lines = f.read().splitlines()
+    assert len(lines) % 2 == 0
+    data = []
+    len_lines = len(lines)
+    #  len_lines = 10
+    for idx in range(len_lines // 2):
+        data.append([lines[idx * 2], lines[(idx * 2) + 1]])
+    tag_list = sorted(set(x[1] for x in data))
+    client = hydrus.Client(load_config(config_yaml)["access_key"])
+    max_limit = 1024
+    skipped_tags = []
+    if max_limit:
+        fids = set()
+        for tag in tqdm.tqdm(tag_list):
+            cfids = client.search_files([tag])
+            if len(cfids) < 1024:
+                fids.update(cfids)
+            else:
+                tqdm.tqdm.write("skip:" + str(tag))
+                skipped_tags.append(tag)
+
+    else:
+        fids = set(
+            more_itertools.flatten(
+                [client.search_files([x]) for x in tqdm.tqdm(tag_list)]
+            )
+        )
+    fmds = list(
+        more_itertools.flatten(
+            client.file_metadata(file_ids=chunk)
+            for chunk in tqdm.tqdm(list(more_itertools.chunked(fids, 128)))
+        )
+    )
+    f_tags = [x[0] for x in data]
+    count = (
+        collections.Counter(
+            more_itertools.flatten(
+                [
+                    fmd["service_names_to_statuses_to_tags"]["my tags"]["0"]
+                    for fmd in fmds
+                ]
+            )
+        ).most_common(),
+    )
+    pprint.pprint(list(filter(lambda x: x[0] in f_tags, count)))
+    print("No count:")
+    for item in data:
+        if item[0] in f_tags and item[1] not in skipped_tags:
+            print(item[0])
 
 
 if __name__ == "__main__":
