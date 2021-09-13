@@ -4,6 +4,7 @@
 """personal hydrus scripts
 """
 import collections
+import logging
 import pprint
 import re
 from urllib.parse import urlparse
@@ -109,7 +110,11 @@ class TagChangerF2(TagChanger):
             for subitem in parts[1:]:
                 c_subitem = subitem.rsplit("(", 1)[0].strip()
                 res[c_subitem].add(main_tag)
-                res[c_subitem].add(c_subitem.split(main_tag, 1)[1].strip())
+                try:
+                    res[c_subitem].add(c_subitem.split(main_tag, 1)[1].strip())
+                except IndexError as err:
+                    logging.error(str({"main_tag": main_tag, "c_subitem": c_subitem}))
+                    raise err
         return res
 
 
