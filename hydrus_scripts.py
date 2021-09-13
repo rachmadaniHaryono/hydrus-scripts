@@ -196,5 +196,59 @@ def count_sibling(config_yaml, sibling_file):
             print(item[0])
 
 
+@main.command()
+@click.argument("config-yaml", type=click.Path(exists=True))
+@click.argument("search-tag")
+@click.option("--max-count", default=10)
+def analyze_tags(config_yaml, search_tag, max_count=10):
+    client = hydrus.Client(load_config(config_yaml)["access_key"])
+    fids = client.search_files([search_tag])
+    print(len(fids))
+    fmds = list(
+        more_itertools.flatten(
+            client.file_metadata(file_ids=chunk)
+            for chunk in tqdm.tqdm(list(more_itertools.chunked(fids, 128)))
+        ),
+    )
+    fmds_tags = list(
+        filter(
+            lambda x: not x.startswith(
+                ("dd:", "series:", "category:genre:", "filename:", "referer:")
+            ),
+            more_itertools.flatten(
+                [
+                    fmd["service_names_to_statuses_to_display_tags"]["my tags"]["0"]
+                    for fmd in fmds
+                ]
+            ),
+        )
+    )
+    pprint.pprint(
+        sorted(
+            collections.Counter(tuple(x.split()[:2]) for x in fmds_tags).most_common(),
+            key=lambda x: x[1],
+            reverse=True,
+        )[:max_count]
+    )
+    pprint.pprint(
+        sorted(
+            collections.Counter(
+                tuple(x.split()[0][:2]) for x in fmds_tags
+            ).most_common(),
+            key=lambda x: x[1],
+            reverse=True,
+        )[:max_count]
+    )
+    pprint.pprint(
+        sorted(
+            collections.Counter(
+                tuple(x.split()[0][:3]) for x in fmds_tags
+            ).most_common(),
+            key=lambda x: x[1],
+            reverse=True,
+        )[:max_count]
+    )
+
+
 if __name__ == "__main__":
     main()
