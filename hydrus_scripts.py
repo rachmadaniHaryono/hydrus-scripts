@@ -7,6 +7,7 @@ import collections
 import logging
 import pprint
 import re
+import typing as T
 from urllib.parse import urlparse
 
 import click
@@ -64,7 +65,8 @@ class TagChanger:
             res[tags[0]].update(tags[1:])
         return res
 
-    def handle_fmd(self, fmd):
+    def handle_fmd(self, fmd) -> T.Iterator[str]:
+        """return iterator of key tag to be removed"""
         tags = fmd["service_names_to_statuses_to_display_tags"]["my tags"]["0"]
         for tag in self.tag_dict:
             if tag in tags:
@@ -93,6 +95,7 @@ class TagChanger:
                     key_hashes[key].add(hash_)
         for key, hashes in tqdm.tqdm(sorted(key_hashes.items())):
             kwargs = self.handle_key(key, hashes)
+            tqdm.tqdm.write("key ({}):".format(len(hashes)) + str(key))
             if kwargs:
                 client.add_tags(**kwargs)
 
