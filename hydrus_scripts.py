@@ -258,5 +258,61 @@ def analyze_tags(config_yaml, search_tag, max_count=10):
     )
 
 
+@main.command()
+@click.argument("tag-file", type=click.Path(exists=True))
+@click.option("--max-count", default=10)
+def analyze_local_tags(tag_file, max_count=10):
+    with open(tag_file) as f:
+        tags = [x.rsplit("(", 1)[0].strip() for x in f.read().splitlines()]
+    pprint.pprint(
+        sorted(
+            collections.Counter(
+                more_itertools.flatten([x.split() for x in tags])
+            ).most_common(),
+            key=lambda x: x[1],
+            reverse=True,
+        )[:max_count]
+    )
+    new_tags = []
+    for tag in [x for x in tags if x]:
+        for idx in range(len(tag.split())):
+            new_tag = " ".join(tag.split()[: idx + 1])
+            if len(new_tag) > 1:
+                new_tags.append(new_tag)
+    most_common = collections.Counter(new_tags).most_common()
+    pprint.pprint(
+        sorted(
+            most_common,
+            key=lambda x: x[1],
+            reverse=True,
+        )[:max_count]
+    )
+
+
+@main.command()
+@click.argument("config-yaml", type=click.Path(exists=True))
+@click.argument("sibling-file")
+def analyze_sibling(config_yaml, sibling_file):
+    with open(sibling_file) as f:
+        lines = f.read().splitlines()
+    assert len(lines) % 2 == 0
+    data = []
+    len_lines = len(lines)
+    #  len_lines = 10
+    for idx in range(len_lines // 2):
+        data.append([lines[idx * 2], lines[(idx * 2) + 1]])
+    data_dict = {k: v for k, v in data}
+    for k, v in tqdm.tqdm(data_dict.items()):
+        if v in data_dict:
+            #  tqdm.tqdm.write(str((k, v)))
+            tag = v
+            while tag in data_dict:
+                if tag in data_dict and data_dict[tag] != tag and data_dict[tag] != v:
+                    tag = data_dict[tag]
+                else:
+                    break
+            print("\n".join([k, v, k, tag]))
+
+
 if __name__ == "__main__":
     main()
