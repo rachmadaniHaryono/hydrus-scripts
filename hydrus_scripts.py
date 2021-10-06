@@ -4,6 +4,7 @@
 """personal hydrus scripts
 """
 import collections
+import json
 import logging
 import pprint
 import re
@@ -312,6 +313,52 @@ def analyze_sibling(config_yaml, sibling_file):
                 else:
                     break
             print("\n".join([k, v, k, tag]))
+
+
+@main.command()
+@click.argument("config-yaml", type=click.Path(exists=True))
+@click.argument("rule-file")
+def lint_tag(config_yaml, rule_file):
+    with open(rule_file) as f:
+        rules = json.load(f)
+    client = hydrus.Client(load_config(config_yaml)["access_key"])
+    client_kwargs_list = []
+    logging.basicConfig(level=logging.INFO)
+    for rule in rules:
+        if rule.get("disable", False):
+            continue
+        template = rule.get("template", "")
+        if template == "remove_tags_from_main_tags":
+            search_tags_list = rule["tags"]
+            remove_tags = rule["remove_tags"]
+            search_tags_list.append(remove_tags)
+        else:
+            search_tags_list = rule.get("search_tags", None)
+            remove_tags = rule.get("remove_tags", None)
+            if remove_tags and not search_tags_list:
+                search_tags_list = remove_tags
+        fids = client.search_files(search_tags_list)
+        if not fids:
+            logging.info("rule (0):{}".format(rule))
+            continue
+        client_kwargs = {
+            "hashes": set(),
+            "service_to_action_to_tags": {"my tags": {"1": list(set(remove_tags))}},
+        }
+        if add_tags := rule.get("add_tags", None):
+            client_kwargs["service_to_action_to_tags"]["my tags"]["0"] = add_tags
+        for chunk in tqdm.tqdm(list(more_itertools.chunked(fids, 256))):
+            for fmd in client.file_metadata(file_ids=chunk):
+                client_kwargs["hashes"].add(fmd["hash"])
+        client_kwargs["hashes"] = list(client_kwargs["hashes"])
+        client_kwargs_list.append(client_kwargs)
+        logging.info("rule ({}):{}".format(len(client_kwargs["hashes"]), rule))
+    for kwargs in client_kwargs_list:
+        if kwargs["hashes"]:
+            client.add_tags(**kwargs)
+            temp_kwargs = kwargs.copy()
+            del temp_kwargs["hashes"]
+            print("\n".join(kwargs["hashes"]) + "\n" + str(temp_kwargs) + "\n")
 
 
 if __name__ == "__main__":
