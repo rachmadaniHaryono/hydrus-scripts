@@ -337,16 +337,26 @@ def lint_tag(config_yaml, rule_file):
             remove_tags = rule.get("remove_tags", None)
             if remove_tags and not search_tags_list:
                 search_tags_list = remove_tags
-        fids = client.search_files(search_tags_list)
+        try:
+            fids = client.search_files(search_tags_list)
+        except hydrus.MissingParameter:
+            logging.error("MissingParameter, rule:" + str(rules))
+            continue
         if not fids:
             logging.info("rule (0):{}".format(rule))
             continue
         client_kwargs = {
             "hashes": set(),
-            "service_to_action_to_tags": {"my tags": {"1": list(set(remove_tags))}},
+            "service_to_action_to_tags": {"my tags": {}},
         }
+        if remove_tags:
+            client_kwargs["service_to_action_to_tags"]["my tags"]["1"] = list(
+                set(remove_tags)
+            )
         if add_tags := rule.get("add_tags", None):
-            client_kwargs["service_to_action_to_tags"]["my tags"]["0"] = add_tags
+            client_kwargs["service_to_action_to_tags"]["my tags"]["0"] = list(
+                set(add_tags)
+            )
         for chunk in tqdm.tqdm(list(more_itertools.chunked(fids, 256))):
             for fmd in client.file_metadata(file_ids=chunk):
                 client_kwargs["hashes"].add(fmd["hash"])
@@ -357,8 +367,15 @@ def lint_tag(config_yaml, rule_file):
         if kwargs["hashes"]:
             client.add_tags(**kwargs)
             temp_kwargs = kwargs.copy()
+            len_hashes = len(temp_kwargs["hashes"])
             del temp_kwargs["hashes"]
-            print("\n".join(kwargs["hashes"]) + "\n" + str(temp_kwargs) + "\n")
+            print(
+                "\n".join(sorted(kwargs["hashes"]))
+                + "\n"
+                + "count: {}; ".format(len_hashes)
+                + str(temp_kwargs)
+                + "\n"
+            )
 
 
 if __name__ == "__main__":
