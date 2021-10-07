@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 """personal hydrus scripts
 """
@@ -161,7 +160,7 @@ def count_sibling(config_yaml, sibling_file):
     #  len_lines = 10
     for idx in range(len_lines // 2):
         data.append([lines[idx * 2], lines[(idx * 2) + 1]])
-    tag_list = sorted(set(x[1] for x in data))
+    tag_list = sorted({x[1] for x in data})
     client = hydrus.Client(load_config(config_yaml)["access_key"])
     max_limit = 1024
     skipped_tags = []
@@ -327,6 +326,10 @@ def lint_tag(config_yaml, rule_file):
     for rule in rules:
         if rule.get("disable", False):
             continue
+        if rule.get("debug", False):
+            import pdb
+
+            pdb.set_trace()
         template = rule.get("template", "")
         if template == "remove_tags_from_main_tags":
             search_tags_list = rule["tags"]
@@ -343,7 +346,7 @@ def lint_tag(config_yaml, rule_file):
             logging.error("MissingParameter, rule:" + str(rules))
             continue
         if not fids:
-            logging.info("rule (0):{}".format(rule))
+            logging.info(f"rule (0):{rule}")
             continue
         client_kwargs = {
             "hashes": set(),
@@ -359,7 +362,12 @@ def lint_tag(config_yaml, rule_file):
             )
         for chunk in tqdm.tqdm(list(more_itertools.chunked(fids, 256))):
             for fmd in client.file_metadata(file_ids=chunk):
-                client_kwargs["hashes"].add(fmd["hash"])
+                if (exclude_hashes := rule.get("exclude_hashes", [])) and fmd[
+                    "hash"
+                ] in exclude_hashes:
+                    continue
+                else:
+                    client_kwargs["hashes"].add(fmd["hash"])
         client_kwargs["hashes"] = list(client_kwargs["hashes"])
         client_kwargs_list.append(client_kwargs)
         logging.info("rule ({}):{}".format(len(client_kwargs["hashes"]), rule))
@@ -372,7 +380,7 @@ def lint_tag(config_yaml, rule_file):
             print(
                 "\n".join(sorted(kwargs["hashes"]))
                 + "\n"
-                + "count: {}; ".format(len_hashes)
+                + f"count: {len_hashes}; "
                 + str(temp_kwargs)
                 + "\n"
             )
