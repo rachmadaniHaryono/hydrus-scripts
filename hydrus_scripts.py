@@ -331,11 +331,22 @@ def lint_tag(config_yaml, rule_file):
 
             pdb.set_trace()
         template = rule.get("template", "")
+        tags = rule.get("tags", None)
         if template == "remove_tags_from_main_tags":
-            search_tags_list = rule["tags"]
+            search_tags_list = rule.get("search_tags", [])
+            if search_tags_list:
+                logging.warning(
+                    "rule with template "
+                    '"remove_tags_from_main_tags" contain "search_tags" key. '
+                    'use "tags" key instead'
+                )
+            if tags:
+                search_tags_list.append(tags)
             remove_tags = rule["remove_tags"]
             search_tags_list.append(remove_tags)
         else:
+            if tags:
+                logging.warning('rule contain "tags" key but will not be used')
             search_tags_list = rule.get("search_tags", None)
             remove_tags = rule.get("remove_tags", None)
             if remove_tags and not search_tags_list:
