@@ -356,8 +356,11 @@ def lint_tag(config_yaml, rule_file):
         except hydrus.MissingParameter:
             logging.error("MissingParameter, rule:" + str(rules))
             continue
+        ordered_rule_log = dict(
+            sorted([x for x in rule.items() if x[0] != "exclude_hashes"])
+        )
         if not fids:
-            logging.info(f"rule (0):{rule}")
+            logging.info(f"rule (0):{ordered_rule_log}")
             continue
         client_kwargs = {
             "hashes": set(),
@@ -381,7 +384,9 @@ def lint_tag(config_yaml, rule_file):
                     client_kwargs["hashes"].add(fmd["hash"])
         client_kwargs["hashes"] = list(client_kwargs["hashes"])
         client_kwargs_list.append(client_kwargs)
-        logging.info("rule ({}):{}".format(len(client_kwargs["hashes"]), rule))
+        logging.info(
+            "rule ({}):{}".format(len(client_kwargs["hashes"]), ordered_rule_log)
+        )
     for kwargs in client_kwargs_list:
         if kwargs["hashes"]:
             client.add_tags(**kwargs)
