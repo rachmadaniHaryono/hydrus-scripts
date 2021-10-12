@@ -7,6 +7,7 @@ import json
 import logging
 import pprint
 import re
+import timeit
 import typing as T
 from urllib.parse import urlparse
 
@@ -317,12 +318,15 @@ def analyze_sibling(config_yaml, sibling_file):
 @main.command()
 @click.argument("config-yaml", type=click.Path(exists=True))
 @click.argument("rule-file")
-def lint_tag(config_yaml, rule_file):
+@click.option("--measure", is_flag=True)
+def lint_tag(config_yaml, rule_file, measure=False):
     with open(rule_file) as f:
         rules = json.load(f)
     client = hydrus.Client(load_config(config_yaml)["access_key"])
     client_kwargs_list = []
     logging.basicConfig(level=logging.INFO)
+    start = None
+    measure_history = []
     for rule in rules:
         if rule.get("disable", False):
             continue
@@ -330,6 +334,8 @@ def lint_tag(config_yaml, rule_file):
             import pdb
 
             pdb.set_trace()
+        if measure:
+            start = timeit.default_timer()
         template = rule.get("template", "")
         tags = rule.get("tags", None)
         if template == "remove_tags_from_main_tags":
@@ -387,6 +393,13 @@ def lint_tag(config_yaml, rule_file):
         logging.info(
             "rule ({}):{}".format(len(client_kwargs["hashes"]), ordered_rule_log)
         )
+        if measure:
+            measure_history.append((ordered_rule_log, timeit.default_timer() - start))
+    if measure:
+        print()
+        for item in sorted(measure_history, key=lambda x: x[1]):
+            print(f"{item[1]}: {item[0]}")
+        print()
     for kwargs in client_kwargs_list:
         if kwargs["hashes"]:
             client.add_tags(**kwargs)
