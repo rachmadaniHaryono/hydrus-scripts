@@ -367,6 +367,10 @@ def lint_tag(config_yaml, rule_file, measure=False):
         )
         if not fids:
             logging.info(f"rule (0):{ordered_rule_log}")
+            if measure:
+                measure_history.append(
+                    (ordered_rule_log, timeit.default_timer() - start)
+                )
             continue
         client_kwargs = {
             "hashes": set(),
