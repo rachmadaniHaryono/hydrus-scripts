@@ -21,3 +21,4 @@ tqdm = "^4.62.3"
 more-itertools = "^8.10.0"
 
 [tool.poetry.dev-dependencies]
+pytest = "^6.2.5"
