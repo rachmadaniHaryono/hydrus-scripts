@@ -1,6 +1,5 @@
 import pytest
 
-
 from hydrus_scripts import TagChanger
 
 
