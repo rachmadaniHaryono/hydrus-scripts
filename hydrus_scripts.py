@@ -3,6 +3,7 @@
 """personal hydrus scripts
 """
 import collections
+import html
 import json
 import logging
 import pprint
@@ -11,6 +12,7 @@ import timeit
 import typing as T
 from urllib.parse import urlparse
 
+import basc_py4chan
 import click
 import hydrus
 import more_itertools
@@ -96,7 +98,7 @@ class TagChanger:
                     key_hashes[key].add(hash_)
         for key, hashes in tqdm.tqdm(sorted(key_hashes.items())):
             kwargs = self.handle_key(key, hashes)
-            tqdm.tqdm.write("key ({}):".format(len(hashes)) + str(key))
+            tqdm.tqdm.write(f"key ({len(hashes)}):" + str(key))
             if kwargs:
                 client.add_tags(**kwargs)
 
@@ -290,6 +292,44 @@ def analyze_local_tags(tag_file, max_count=10):
     )
 
 
+def clean_comment_body(body):
+    """Returns given comment HTML as plaintext.
+
+    Converts all HTML tags and entities within 4chan comments
+    into human-readable text equivalents.
+
+    based on basc_py4chan.util.clean_comment_body
+    """
+    body = html.unescape(body)
+    body = re.sub(r"<a [^>]+>(.+?)</a>", r"\1", body)
+    body = body.replace("<br>", "\n")
+    body = re.sub(r"<.+?>", "", body)
+    return body
+
+
+def get_4chan_archive_data(board):
+    from requests_html import HTMLSession
+
+    session = HTMLSession()
+    r = session.get(f"https://boards.4chan.org/{board}/archive")
+    hrefs = [x.attrs.get("href") for x in r.html.find("a.quotelink")]
+    for href in hrefs:
+        parts = href.split("/")
+        tt = basc_py4chan.Thread(basc_py4chan.Board(parts[1]), int(parts[3]))
+        tt.update()
+        tags = set()
+        fp = tt.posts[0]
+        if fp.subject:
+            tags.add(f"thread:{fp.subject}")
+        if fp.html_comment:
+            tags.add(
+                "description:{}".format(
+                    clean_comment_body(fp.html_comment).replace("\n", " ")
+                )
+            )
+        yield tt.posts[0].file1.file_url, tags
+
+
 @main.command()
 @click.argument("config-yaml", type=click.Path(exists=True))
 @click.argument("sibling-file")
@@ -363,7 +403,7 @@ def lint_tag(config_yaml, rule_file, measure=False):
             logging.error("MissingParameter, rule:" + str(rules))
             continue
         ordered_rule_log = dict(
-            sorted([x for x in rule.items() if x[0] != "exclude_hashes"])
+            sorted(x for x in rule.items() if x[0] != "exclude_hashes")
         )
         if not fids:
             logging.info(f"rule (0):{ordered_rule_log}")
@@ -417,6 +457,19 @@ def lint_tag(config_yaml, rule_file, measure=False):
                 + str(temp_kwargs)
                 + "\n"
             )
+
+
+@main.command()
+@click.argument("config-yaml", type=click.Path(exists=True))
+@click.argument("boards", nargs=-1)
+def send_board_archive(config_yaml, boards):
+    client = hydrus.Client(load_config(config_yaml)["access_key"])
+    for board in boards:
+        for url, tags in get_4chan_archive_data(board):
+            kwargs = {"url": url}
+            if tags:
+                kwargs["service_names_to_additional_tags"] = {"my tags": list(tags)}
+            client.add_url(**kwargs)
 
 
 if __name__ == "__main__":
