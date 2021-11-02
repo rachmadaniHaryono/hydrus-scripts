@@ -1,5 +1,6 @@
 import pytest
 
+import hydrus_scripts as hs
 from hydrus_scripts import TagChanger
 
 
@@ -13,3 +14,12 @@ from hydrus_scripts import TagChanger
 )
 def test_text_to_dict(test_input, expected):
     assert TagChanger.text_to_dict(test_input) == expected
+
+
+@pytest.mark.vcr()
+@pytest.mark.golden_test("data/test_get_4chan_archive_data*.yaml")
+def test_get_4chan_archive_data(golden):
+    assert [
+        [x[0], list(x[1])]
+        for x in sorted(x for x in hs.get_4chan_archive_data(golden["input"]))
+    ] == golden.out["output"]
