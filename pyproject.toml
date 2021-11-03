@@ -34,3 +34,7 @@ pytest-vcr = "^1.0.2"
 
 [tool.poetry.scripts]
 hydrus_scripts = 'hydrus_scripts:main'
+
+[tool.pytest.ini_options]
+addopts = "--doctest-modules -x --failed-first --monkeytype-output=./monkeytype.sqlite3"
+enable_assertion_pass_hook = true
