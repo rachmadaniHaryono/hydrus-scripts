@@ -6,6 +6,7 @@ import collections
 import html
 import json
 import logging
+import os
 import pprint
 import re
 import timeit
@@ -307,7 +308,7 @@ def clean_comment_body(body):
     return body
 
 
-def get_4chan_archive_data(board):
+def get_4chan_archive_data(board: T.List[str], exclude_video: bool = False):
     from requests_html import HTMLSession
 
     session = HTMLSession()
@@ -320,14 +321,29 @@ def get_4chan_archive_data(board):
         tags = set()
         fp = tt.posts[0]
         if fp.subject:
-            tags.add(f"thread:{fp.subject}")
+            tags.add(f"thread:{html.unescape(fp.subject)}")
         if fp.html_comment:
             tags.add(
                 "description:{}".format(
                     clean_comment_body(fp.html_comment).replace("\n", " ")
                 )
             )
-        yield tt.posts[0].file1.file_url, tags
+        if url := tt.url:
+            tags.add("url:" + str(url))
+        first_url = tt.posts[0].file1.file_url
+        video_exts = (".gif", ".webm")
+        ext_valid = os.path.splitext(first_url)[1] not in video_exts
+        if not exclude_video or ext_valid:
+            yield first_url, tags
+        else:
+            yield tt.posts[0].file1.thumbnail_url, tags
+            post = more_itertools.first_true(
+                tt.posts[1:],
+                pred=lambda x: hasattr(x, "file1")
+                and os.path.splitext(x.file1.file_url)[1] not in video_exts,
+            )
+            if post:
+                yield post.file1.file_url, tags
 
 
 @main.command()
@@ -462,10 +478,12 @@ def lint_tag(config_yaml, rule_file, measure=False):
 @main.command()
 @click.argument("config-yaml", type=click.Path(exists=True))
 @click.argument("boards", nargs=-1)
-def send_board_archive(config_yaml, boards):
+@click.option("--exclude-video", is_flag=True)
+def send_board_archive(config_yaml, boards, exclude_video):
     client = hydrus.Client(load_config(config_yaml)["access_key"])
     for board in boards:
-        for url, tags in get_4chan_archive_data(board):
+        for url, tags in get_4chan_archive_data(board, exclude_video):
+            print(str((url, tags)))
             kwargs = {"url": url}
             if tags:
                 kwargs["service_names_to_additional_tags"] = {"my tags": list(tags)}
