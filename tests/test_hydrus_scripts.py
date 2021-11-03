@@ -19,7 +19,10 @@ def test_text_to_dict(test_input, expected):
 @pytest.mark.vcr()
 @pytest.mark.golden_test("data/test_get_4chan_archive_data*.yaml")
 def test_get_4chan_archive_data(golden):
+    kwargs = {}
+    if exclude_video := golden.get("exclude_video"):
+        kwargs["exclude_video"] = exclude_video
     assert [
-        [x[0], list(x[1])]
-        for x in sorted(x for x in hs.get_4chan_archive_data(golden["input"]))
+        [x[0], list(sorted(x[1]))]
+        for x in sorted(x for x in hs.get_4chan_archive_data(golden["input"], **kwargs))
     ] == golden.out["output"]
