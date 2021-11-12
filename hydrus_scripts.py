@@ -40,10 +40,11 @@ def main(ctx, debug):
     ctx.obj["DEBUG"] = debug
 
 
-def load_config(config_yaml):
+def load_config(config_yaml) -> T.Dict[str, T.Any]:
     if config_yaml is not None:
         with open(config_yaml) as f:
             return yaml.safe_load(f)
+    return {}
 
 
 @main.command()
@@ -150,7 +151,9 @@ def count_netloc(config_yaml, hashes_file):
     fmds = hydrus.Client(load_config(config_yaml)["access_key"]).file_metadata(
         hashes=text.splitlines()
     )
-    known_urls = list(more_itertools.flatten([x.get("known_urls", []) for x in fmds]))
+    known_urls: T.List[str] = list(
+        more_itertools.flatten([x.get("known_urls", []) for x in fmds])  # type: ignore
+    )
     pprint.pprint(collections.Counter([urlparse(x).netloc for x in known_urls]))
 
 
@@ -197,7 +200,9 @@ def count_sibling(config_yaml, sibling_file):
         collections.Counter(
             more_itertools.flatten(
                 [
-                    fmd["service_names_to_statuses_to_tags"]["my tags"]["0"]
+                    fmd["service_names_to_statuses_to_tags"]["my tags"][  # type: ignore
+                        "0"
+                    ]
                     for fmd in fmds
                 ]
             )
@@ -231,7 +236,9 @@ def analyze_tags(config_yaml, search_tag, max_count=10):
             ),
             more_itertools.flatten(
                 [
-                    fmd["service_names_to_statuses_to_display_tags"]["my tags"]["0"]
+                    fmd["service_names_to_statuses_to_display_tags"][  # type: ignore
+                        "my tags"
+                    ]["0"]
                     for fmd in fmds
                 ]
             ),
@@ -315,16 +322,18 @@ def get_4chan_archive_data(board: T.List[str], exclude_video: bool = False):
 
     session = HTMLSession()
     r = session.get(f"https://boards.4chan.org/{board}/archive")
-    hrefs = [x.attrs.get("href") for x in r.html.find("a.quotelink")]
+    hrefs: T.List[str] = [
+        x.attrs.get("href") for x in r.html.find("a.quotelink")  # type: ignore
+    ]  # type:ignore
     for href in hrefs:
         parts = href.split("/")
         tt = basc_py4chan.Thread(basc_py4chan.Board(parts[1]), int(parts[3]))
         tt.update()
         tags = set()
         fp = tt.posts[0]
-        if fp.subject:
+        if fp and fp.subject:
             tags.add(f"thread:{html.unescape(fp.subject)}")
-        if fp.html_comment:
+        if fp and fp.html_comment:
             tags.add(
                 "description:{}".format(
                     clean_comment_body(fp.html_comment).replace("\n", " ")
@@ -332,16 +341,19 @@ def get_4chan_archive_data(board: T.List[str], exclude_video: bool = False):
             )
         if url := tt.url:
             tags.add("url:" + str(url))
-        first_url = tt.posts[0].file1.file_url
+        first_url = fp.file1.file_url if fp else None
         video_exts = (".gif", ".webm")
-        ext_valid = os.path.splitext(first_url)[1] not in video_exts
+        ext: str = os.path.splitext(first_url)[1]  # type:ignore
+        ext_valid = ext not in video_exts
         if not exclude_video or ext_valid:
             yield first_url, tags
         else:
-            yield tt.posts[0].file1.thumbnail_url, tags
+            if fp:
+                yield fp.file1.thumbnail_url, tags
             post = more_itertools.first_true(
                 tt.posts[1:],
                 pred=lambda x: hasattr(x, "file1")
+                and x
                 and os.path.splitext(x.file1.file_url)[1] not in video_exts,
             )
             if post:
@@ -349,9 +361,8 @@ def get_4chan_archive_data(board: T.List[str], exclude_video: bool = False):
 
 
 @main.command()
-@click.argument("config-yaml", type=click.Path(exists=True))
 @click.argument("sibling-file")
-def analyze_sibling(config_yaml, sibling_file):
+def analyze_sibling(sibling_file):
     with open(sibling_file) as f:
         lines = f.read().splitlines()
     assert len(lines) % 2 == 0
@@ -484,9 +495,10 @@ def lint_tag(config_yaml, rule_file, measure=False):
 def send_board_archive(config_yaml, boards, exclude_video):
     client = hydrus.Client(load_config(config_yaml)["access_key"])
     for board in boards:
+        tags: T.Set[str]
         for url, tags in get_4chan_archive_data(board, exclude_video):
             print(str((url, tags)))
-            kwargs = {"url": url}
+            kwargs: T.Dict[str, T.Any] = {"url": url}
             if tags:
                 kwargs["service_names_to_additional_tags"] = {"my tags": list(tags)}
             client.add_url(**kwargs)
@@ -506,12 +518,12 @@ def add_data_uri(config_yaml, data_uris):
 @click.argument("config-yaml", type=click.Path(exists=True))
 @click.argument("hashes", nargs=-1)
 @click.option("--interactive-tag", is_flag=True)
-def tag_hashes(config_yaml, hashes, namespace, interactive_tag):
-    client = hydrus.Client(load_config(config_yaml)["access_key"])
+def tag_hashes(config_yaml, hashes, interactive_tag):
+    client = hydrus.Client(load_config(config_yaml).get("access_key", None))
     if interactive_tag:
         if not (tag := input("input tag:")):
             raise ValueError("No tag given on interactive-tag")
-    print(client.add_tags(hashes, service_to_tags={"my tags": [tag]}))
+        print(client.add_tags(hashes, service_to_tags={"my tags": [tag]}))
 
 
 if __name__ == "__main__":
