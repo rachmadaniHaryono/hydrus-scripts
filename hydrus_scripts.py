@@ -21,6 +21,7 @@ import hydrus
 import more_itertools
 import tqdm
 import yaml
+from PIL import Image
 
 __author__ = """rachmadani haryono"""
 __email__ = """foreturiga@gmail.com"""
@@ -524,6 +525,41 @@ def tag_hashes(config_yaml, hashes, interactive_tag):
         if not (tag := input("input tag:")):
             raise ValueError("No tag given on interactive-tag")
         print(client.add_tags(hashes, service_to_tags={"my tags": [tag]}))
+
+
+def crop(im, height, width):
+    imgwidth, imgheight = im.size
+    for i in range(imgheight // height):
+        for j in range(imgwidth // width):
+            box = (j * width, i * height, (j + 1) * width, (i + 1) * height)
+            yield im.crop(box)
+
+
+@main.command()
+@click.argument("config-yaml", type=click.Path(exists=True))
+@click.argument("hashes", nargs=-1)
+@click.option("--width", default=1)
+@click.option("--height", default=1)
+def split_images(config_yaml, hashes, width, height):
+    if width == 1 and height == 1:
+        raise ValueError("width and height = 1")
+    client = hydrus.Client(load_config(config_yaml).get("access_key", None))
+    for hash_ in hashes:
+        img = Image.open(io.BytesIO(client.get_file(hash_).content))
+        for piece in crop(img, img.size[1] // height, img.size[0] // width):
+            dst_img = io.BytesIO()
+            piece.save(dst_img, format="jpeg")
+            dst_img.seek(0)
+            resp = client.add_file(dst_img)
+            if resp["status"] == 4:
+                resp["filesize"] = dst_img.getbuffer().nbytes
+            note = resp.pop("note", None)
+            output = []
+            output.append(yaml.dump(resp).strip())
+            if note.strip():
+                output.append("note:" + note.strip())
+            print("\n".join(output))
+            print("\n")
 
 
 if __name__ == "__main__":
