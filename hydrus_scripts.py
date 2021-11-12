@@ -502,5 +502,17 @@ def add_data_uri(config_yaml, data_uris):
         print(client.add_file(io.BytesIO(data)))
 
 
+@main.command()
+@click.argument("config-yaml", type=click.Path(exists=True))
+@click.argument("hashes", nargs=-1)
+@click.option("--interactive-tag", is_flag=True)
+def tag_hashes(config_yaml, hashes, namespace, interactive_tag):
+    client = hydrus.Client(load_config(config_yaml)["access_key"])
+    if interactive_tag:
+        if not (tag := input("input tag:")):
+            raise ValueError("No tag given on interactive-tag")
+    print(client.add_tags(hashes, service_to_tags={"my tags": [tag]}))
+
+
 if __name__ == "__main__":
     main()
