@@ -2,8 +2,10 @@
 
 """personal hydrus scripts
 """
+import base64
 import collections
 import html
+import io
 import json
 import logging
 import os
@@ -488,6 +490,16 @@ def send_board_archive(config_yaml, boards, exclude_video):
             if tags:
                 kwargs["service_names_to_additional_tags"] = {"my tags": list(tags)}
             client.add_url(**kwargs)
+
+
+@main.command()
+@click.argument("config-yaml", type=click.Path(exists=True))
+@click.argument("data-uris")
+def add_data_uri(config_yaml, data_uris):
+    client = hydrus.Client(load_config(config_yaml)["access_key"])
+    for data_uri in data_uris.splitlines():
+        data = base64.b64decode(data_uri.split(",", 1)[1])
+        print(client.add_file(io.BytesIO(data)))
 
 
 if __name__ == "__main__":
