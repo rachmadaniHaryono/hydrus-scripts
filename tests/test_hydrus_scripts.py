@@ -20,6 +20,8 @@ def test_text_to_dict(test_input, expected):
 @pytest.mark.golden_test("data/test_get_4chan_archive_data*.yaml")
 def test_get_4chan_archive_data(golden):
     kwargs = {}
+    if not hasattr(golden, "get"):
+        pytest.skip("No test data")
     if exclude_video := golden.get("exclude_video"):
         kwargs["exclude_video"] = exclude_video
     assert [
