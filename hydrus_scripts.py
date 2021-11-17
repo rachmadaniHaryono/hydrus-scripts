@@ -552,12 +552,12 @@ def split_images(config_yaml, hashes, width, height):
             dst_img.seek(0)
             resp = client.add_file(dst_img)
             if resp["status"] == 4:
-                resp["filesize"] = dst_img.getbuffer().nbytes
+                resp["filesize"] = str(dst_img.getbuffer().nbytes)  # type: ignore
             note = resp.pop("note", None)
             output = []
             output.append(yaml.dump(resp).strip())
-            if note.strip():
-                output.append("note:" + note.strip())
+            if note and str(note).strip():
+                output.append("note:" + str(note).strip())
             print("\n".join(output))
             print("\n")
 
