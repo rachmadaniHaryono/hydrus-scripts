@@ -497,8 +497,8 @@ def send_board_archive(config_yaml, boards, exclude_video):
     client = hydrus.Client(load_config(config_yaml)["access_key"])
     for board in boards:
         tags: T.Set[str]
-        for url, tags in get_4chan_archive_data(board, exclude_video):
-            print(str((url, tags)))
+        for url, tags in tqdm.tqdm(get_4chan_archive_data(board, exclude_video)):
+            tqdm.tqdm.write(str((url, tags)))
             kwargs: T.Dict[str, T.Any] = {"url": url}
             if tags:
                 kwargs["service_names_to_additional_tags"] = {"my tags": list(tags)}
