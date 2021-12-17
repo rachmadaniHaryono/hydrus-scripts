@@ -16,12 +16,7 @@ help:
 	@python3 -c "$$PRINT_HELP_PYSCRIPT" < $(MAKEFILE_LIST)
 
 venv: ## create a virtual environment
-	python3 -m venv .venv
-	( \
-		. .venv/bin/activate; \
-		pip3 install -e .; \
-		pip3 install -r requirements_dev.txt; \
-	)
+	poetry install
 
 clean: clean-build clean-pyc ## remove all build, test, coverage and Python artifacts
 
@@ -39,23 +34,22 @@ clean-pyc: ## remove Python file artifacts
 	find . -name '__pycache__' -exec rm -fr {} +
 
 lint: ## check style with flake8
-	flake8 hydrus_scripts.py tests
+	poetry run flake8 hydrus_scripts.py tests
 
 test: ## run tests quickly with the default Python
-	python3 -m pytest -v
+	poetry run python3 -m pytest -v
 
 release: clean lint test dist ## package and upload a release
-	twine check dist/*
-	twine upload dist/*
+	poery check
+	poetry publish
 
 dist: clean ## builds source and wheel package
-	python3 setup.py sdist
-	python3 setup.py bdist_wheel
+	poetry build
 	ls -l dist
 
 install: clean ## install the package to the active Python's site-packages
-	pip3 install -e .
+	poetry install
 
 cli: ## give cli a test run
-	hydrus_scripts --version
-	hydrus_scripts --help
+	poetry run hydrus_scripts --version
+	poetry run hydrus_scripts --help
