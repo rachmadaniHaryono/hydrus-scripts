@@ -406,6 +406,8 @@ def lint_tag(config_yaml, rule_file, measure=False):
             pdb.set_trace()
         if measure:
             start = timeit.default_timer()
+        if start is None:
+            start = 0
         template = rule.get("template", "")
         tags = rule.get("tags", None)
         if template == "remove_tags_from_main_tags":
