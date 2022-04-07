@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-
-"""personal hydrus scripts
-"""
+"""personal hydrus scripts."""
 import base64
 import collections
 import html
@@ -13,11 +11,13 @@ import pprint
 import re
 import timeit
 import typing as T
+from urllib import error, parse
 from urllib.parse import urlparse
 
 import basc_py4chan
 import click
 import hydrus
+import hydrus_api
 import more_itertools
 import tqdm
 import yaml
@@ -564,5 +564,123 @@ def split_images(config_yaml, hashes, width, height):
             print("\n")
 
 
+def associate_url(board_names):
+    client = hydrus_api.Client(
+        "4bd08d98f1e566a5ec78afe42c070d303b5340fd47a814782f30b43316c2cecf"
+    )
+    file_list = []
+    error_list = []
+    for board_name in board_names:
+        bb = basc_py4chan.Board(board_name)
+        thread_objs = []
+        try:
+            thread_objs = bb.get_all_threads()
+        except error.HTTPError as err:
+            print(f"HTTPError: board_name: {board_name}")
+            error_list.append(err)
+        with click.progressbar(
+            thread_objs, label=f"get all threads: {board_name}"
+        ) as bar:
+            for tt in bar:
+                for item in [x for x in tt.all_posts if x.has_file]:
+                    file_list.append(item.file)
+    """
+    example:
+
+    >>> vars(file_list[0])
+    {'_post': <Post /e/1436774#1436774, has_file: True>,
+     '_data': {'no': 1436774,
+      'sticky': 1,
+      'closed': 1,
+      'now': '11/01/11(Tue)20:06',
+      'name': 'Anonymous',
+      'com': "Since there seems to be some confusion (or lack of reading) on the rules of this board&#44; here is the concept of this board clear and simple:<br><br>/e/cchi is for:<br>- Pictures of animu girls featuring either sexy clothing or nudity without sex.<br>- Masturbation and suggestive touching pictures are allowed as long as it's one girl doing it to herself without use of toys.<br><br>/e/cchi is NOT for:<br>- Blatantly-sexual images involving men&#44; the sexual fluids of men or foreplay done by men. These images belong in /h/.<br>- Images featuring one woman touching another in a blatantly or suggestively sexual manner. These images belong in /u/.<br>- Images exclusively featuring men. These images belong in /cm/ or /y/.<br>- Requests. All requests go in /r/. Do not post requests here unless you have at least 6 pictures related to what you're requesting.<br>- Pictures featuring girls with a loli body type&#44; or Furry pictures. Do not post these anywhere except for /b/.<br>- Western art. Due to frequent quality issues and lawsuit-happy western artists&#44; western art or fanart is not allowed&#44; with very few exceptions.",
+      'filename': '1310981818477',
+      'ext': '.jpg',
+      'w': 675,
+      'h': 900,
+      'tn_w': 189,
+      'tn_h': 251,
+      'tim': 1320192419595,
+      'time': 1320192419,
+      'md5': 'Lz131e2tX3Hj0DLmRJlkvA==',
+      'fsize': 215072,
+      'resto': 0,
+      'capcode': 'mod',
+      'semantic_url': 'since-there-seems-to-be-some-confusion-or-lack-of',
+      'replies': 0,
+      'images': 0,
+      'last_modified': 1798779600},
+     '_url': <basc_py4chan.url.Url at 0x7f80631777f0>}
+    """
+
+    hashes = client.search_files(
+        ["system:hash = {} md5".format(" ".join([x.file_md5_hex for x in file_list]))],
+        return_hashes=True,
+    )
+    metadata_list = []
+    for item in more_itertools.chunked(hashes, 256):
+        metadata_list.extend(client.get_file_metadata(hashes=item))  # type: ignore
+
+    def get_https_url(url):
+        purl = parse.urlparse(url)
+        if purl.scheme == "https":
+            return url
+        return purl._replace(scheme="https").geturl()
+
+    known_urls = set()
+    [known_urls.update(x.get("known_urls", [])) for x in metadata_list]
+
+    matching_data = []
+    file_dict = {get_https_url(x.file_url): x for x in file_list}
+    metadata_non_matching_list = []
+    with click.progressbar(metadata_list, label="get all metadata") as bar:
+        for metadata in bar:
+            match_found = False
+            if known_urls := metadata.get("known_urls"):
+                for url in known_urls:
+                    if url in file_dict:
+                        match_found = True
+                        matching_data.append((metadata, file_dict[url]))
+            if not match_found:
+                metadata_non_matching_list.append(metadata)
+
+    file_dict = {
+        (x.file_size, x.file_width, x.file_height, x.file_extension): x
+        for x in file_list
+    }
+    metadata_res_list = []
+    associate_url_dict = collections.defaultdict(set)
+    with click.progressbar(
+        metadata_non_matching_list, label="get non match metadata"
+    ) as bar:
+        for metadata in bar:
+            key = (
+                metadata["size"],
+                metadata["width"],
+                metadata["height"],
+                metadata["ext"],
+            )
+            if key in file_dict:
+                associate_url_dict[metadata["hash"]].add(file_dict[key].file_url)
+            else:
+                metadata_res_list.append(metadata)
+
+    with click.progressbar(associate_url_dict.items(), label="associate url") as bar:
+        for key, value in bar:
+            client.associate_url(hashes=[key], urls_to_add=list(value))
+
+    with click.progressbar(
+        sorted(more_itertools.flatten(associate_url_dict.values())), label="add url"
+    ) as bar:
+        for url in bar:
+            client.add_url(url, destination_page_name="1")
+    return collections.namedtuple(
+        "Result", ["metadata_res_list", "file_list", "error_list"]
+    )(metadata_res_list, file_list, error_list)
+
+
 if __name__ == "__main__":
     main()
+
+pass
