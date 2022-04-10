@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """personal hydrus scripts."""
+import asyncio
 import base64
 import collections
 import html
@@ -11,17 +12,19 @@ import pprint
 import re
 import timeit
 import typing as T
-from urllib import error, parse
+from urllib import parse
 from urllib.parse import urlparse
 
+import aiohttp
 import basc_py4chan
 import click
-import hydrus
 import hydrus_api
+import hydrus_api as hydrus
 import more_itertools
 import tqdm
 import yaml
 from PIL import Image
+from tqdm.asyncio import tqdm_asyncio
 
 __author__ = """rachmadani haryono"""
 __email__ = """foreturiga@gmail.com"""
@@ -564,26 +567,165 @@ def split_images(config_yaml, hashes, width, height):
             print("\n")
 
 
+async def get_thread_from_request(
+    board: basc_py4chan.Board, res: aiohttp.ClientResponse, id: int
+) -> T.Optional[basc_py4chan.Thread]:
+    if res.status == 404:
+        return None
+
+    res.raise_for_status()
+
+    data = await res.json()
+    return basc_py4chan.Thread._from_json(data, board, id, res.headers["Last-Modified"])
+
+
+async def get_thread(
+    thread_id: int,
+    cls: basc_py4chan.Board,
+    session: aiohttp.ClientSession,
+    update_if_cached: bool = True,
+    raise_404: bool = False,
+) -> T.Optional[basc_py4chan.Thread]:
+    """Get a thread from 4chan via 4chan API async.
+
+    Args:
+        cls: Board object
+        thread_id (int): Thread ID
+        session: aiohttp client session
+        update_if_cached (bool): Whether the thread should be updated if it's already in our cache
+        raise_404 (bool): Raise an Exception if thread has 404'd
+
+    Returns:
+        :class:`basc_py4chan.Thread`: Thread object
+    """
+    # see if already cached
+    cached_thread = cls._thread_cache.get(thread_id)
+    if cached_thread:
+        if update_if_cached:
+            cached_thread.update()
+        return cached_thread
+
+    async with session.get(cls._url.thread_api_url(thread_id=thread_id)) as res:
+        # check if thread exists
+        if raise_404:
+            res.raise_for_status()
+        elif not res.ok:
+            return None
+
+        thread = await get_thread_from_request(cls, res, thread_id)
+    cls._thread_cache[thread_id] = thread
+
+    return thread
+
+
+async def get_json(url: str, session: aiohttp.ClientSession) -> T.Any:
+    async with session.get(url) as res:
+        res.raise_for_status()
+        data = await res.json()
+        return data
+
+
+async def get_all_thread_ids(
+    cls: basc_py4chan.Board, session: aiohttp.ClientSession
+) -> T.List[T.Any]:
+    """Return the ID of every thread on board.
+
+    Returns:
+        list of ints: List of IDs of every thread on this board.
+    """
+    json = await get_json(session=session, url=cls._url.thread_list())
+    return [thread["no"] for page in json for thread in page["threads"]]
+
+
+async def request_threads(
+    cls: basc_py4chan.Board, url: str, session: aiohttp.ClientSession
+):
+    json = await get_json(session=session, url=url)
+
+    if url == cls._url.catalog():
+        thread_list = cls._catalog_to_threads(json)
+    else:
+        thread_list = json["threads"]
+
+    threads = []
+    for thread_json in thread_list:
+        id = thread_json["posts"][0]["no"]
+        if id in cls._thread_cache:
+            thread = cls._thread_cache[id]
+            thread.want_update = True
+        else:
+            thread = basc_py4chan.Thread._from_json(thread_json, cls)
+            cls._thread_cache[thread.id] = thread
+
+        threads.append(thread)
+
+    return threads
+
+
+async def get_all_threads(
+    cls: basc_py4chan.Board, session: aiohttp.ClientSession, expand=False
+):
+    """Return every thread on this board.
+
+    If not expanded, result is same as get_threads run across all board pages,
+    with last 3-5 replies included.
+
+    Uses the catalog when not expanding, and uses the flat thread ID listing
+    at /{board}/threads.json when expanding for more efficient resource usage.
+
+    If expanded, all data of all threads is returned with no omitted posts.
+
+    Args:
+        expand (bool): Whether to download every single post of every thread.
+            If enabled, this option can be very slow and bandwidth-intensive.
+
+    Returns:
+        list of :mod:`basc_py4chan.Thread`: List of Thread objects representing every thread on this board.
+    """
+    if not expand:
+        return await request_threads(cls=cls, url=cls._url.catalog(), session=session)
+
+    thread_ids = await get_all_thread_ids(cls=cls, session=session)
+    threads = []
+    for id in thread_ids:
+        tqdm_asyncio.write(f"{cls}: {id}")
+        ts = await get_thread(id, cls=cls, session=session, raise_404=False)
+        threads.append(ts)
+    return filter(None, threads)
+
+
+async def get_all_threads_from_board_names(
+    board_names, tcp_connector_limit: T.Optional[int] = None
+):
+    kwargs = {}
+    if tcp_connector_limit:
+        kwargs["connector"] = aiohttp.TCPConnector(limit=tcp_connector_limit)
+    async with aiohttp.ClientSession(**kwargs) as session:
+        res = []
+        for board_name in tqdm_asyncio(board_names):
+            tqdm_asyncio.write(f"board: {board_name}")
+            data = await get_all_threads(basc_py4chan.Board(board_name), session)
+            res.extend(data)
+        return res
+
+
 def associate_url(board_names):
     client = hydrus_api.Client(
         "4bd08d98f1e566a5ec78afe42c070d303b5340fd47a814782f30b43316c2cecf"
     )
     file_list = []
     error_list = []
-    for board_name in board_names:
-        bb = basc_py4chan.Board(board_name)
-        thread_objs = []
-        try:
-            thread_objs = bb.get_all_threads()
-        except error.HTTPError as err:
-            print(f"HTTPError: board_name: {board_name}")
-            error_list.append(err)
-        with click.progressbar(
-            thread_objs, label=f"get all threads: {board_name}"
-        ) as bar:
-            for tt in bar:
-                for item in [x for x in tt.all_posts if x.has_file]:
-                    file_list.append(item.file)
+    thread_objs = []
+    try:
+        loop = asyncio.get_event_loop()
+        thread_objs = loop.run_until_complete(
+            get_all_threads_from_board_names(board_names, tcp_connector_limit=20)
+        )
+    except Exception as err:
+        error_list.append(err)
+    for tt in thread_objs if thread_objs else []:
+        for item in [x for x in tt.all_posts if x.has_file]:  # type: ignore
+            file_list.append(item.file)  # type: ignore
     """
     example:
 
@@ -614,10 +756,18 @@ def associate_url(board_names):
      '_url': <basc_py4chan.url.Url at 0x7f80631777f0>}
     """
 
-    hashes = client.search_files(
-        ["system:hash = {} md5".format(" ".join([x.file_md5_hex for x in file_list]))],
-        return_hashes=True,
-    )
+    hashes = set()
+    for chunk in more_itertools.chunked(file_list, 256):
+        hashes.update(
+            client.search_files(
+                [
+                    "system:hash = {} md5".format(
+                        " ".join([x.file_md5_hex for x in chunk])
+                    )
+                ],
+                return_hashes=True,
+            )
+        )
     metadata_list = []
     for item in more_itertools.chunked(hashes, 256):
         metadata_list.extend(client.get_file_metadata(hashes=item))  # type: ignore
@@ -682,5 +832,3 @@ def associate_url(board_names):
 
 if __name__ == "__main__":
     main()
-
-pass
