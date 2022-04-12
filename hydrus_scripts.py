@@ -728,14 +728,13 @@ def associate_url(board_names):
     """
     example:
 
-    >>> vars(file_list[0])
+    >>> {k, v in vars(file_list[0]).items() if k != 'com'}
     {'_post': <Post /e/1436774#1436774, has_file: True>,
      '_data': {'no': 1436774,
       'sticky': 1,
       'closed': 1,
       'now': '11/01/11(Tue)20:06',
       'name': 'Anonymous',
-      'com': "Since there seems to be some confusion (or lack of reading) on the rules of this board&#44; here is the concept of this board clear and simple:<br><br>/e/cchi is for:<br>- Pictures of animu girls featuring either sexy clothing or nudity without sex.<br>- Masturbation and suggestive touching pictures are allowed as long as it's one girl doing it to herself without use of toys.<br><br>/e/cchi is NOT for:<br>- Blatantly-sexual images involving men&#44; the sexual fluids of men or foreplay done by men. These images belong in /h/.<br>- Images featuring one woman touching another in a blatantly or suggestively sexual manner. These images belong in /u/.<br>- Images exclusively featuring men. These images belong in /cm/ or /y/.<br>- Requests. All requests go in /r/. Do not post requests here unless you have at least 6 pictures related to what you're requesting.<br>- Pictures featuring girls with a loli body type&#44; or Furry pictures. Do not post these anywhere except for /b/.<br>- Western art. Due to frequent quality issues and lawsuit-happy western artists&#44; western art or fanart is not allowed&#44; with very few exceptions.",
       'filename': '1310981818477',
       'ext': '.jpg',
       'w': 675,
