@@ -19,7 +19,6 @@ import aiohttp
 import basc_py4chan
 import click
 import hydrus_api
-import hydrus_api as hydrus
 import more_itertools
 import tqdm
 import yaml
@@ -143,7 +142,7 @@ def replace_tag(config_yaml, tags_file, mode):
     obj_dict = {1: TagChanger, 2: TagChangerF2}
     obj_cls = obj_dict[mode]
     obj = obj_dict[mode](tag_dict=obj_cls.text_to_dict(text))
-    obj.run(hydrus.Client(config["access_key"]), [[x] for x in obj.tag_dict.keys()])
+    obj.run(hydrus_api.Client(config["access_key"]), [[x] for x in obj.tag_dict.keys()])
 
 
 @main.command()
@@ -152,7 +151,7 @@ def replace_tag(config_yaml, tags_file, mode):
 def count_netloc(config_yaml, hashes_file):
     with open(hashes_file) as f:
         text = f.read()
-    fmds = hydrus.Client(load_config(config_yaml)["access_key"]).file_metadata(
+    fmds = hydrus_api.Client(load_config(config_yaml)["access_key"]).file_metadata(
         hashes=text.splitlines()
     )
     known_urls: T.List[str] = list(
@@ -174,7 +173,7 @@ def count_sibling(config_yaml, sibling_file):
     for idx in range(len_lines // 2):
         data.append([lines[idx * 2], lines[(idx * 2) + 1]])
     tag_list = sorted({x[1] for x in data})
-    client = hydrus.Client(load_config(config_yaml)["access_key"])
+    client = hydrus_api.Client(load_config(config_yaml)["access_key"])
     max_limit = 1024
     skipped_tags = []
     if max_limit:
@@ -224,7 +223,7 @@ def count_sibling(config_yaml, sibling_file):
 @click.argument("search-tag")
 @click.option("--max-count", default=10)
 def analyze_tags(config_yaml, search_tag, max_count=10):
-    client = hydrus.Client(load_config(config_yaml)["access_key"])
+    client = hydrus_api.Client(load_config(config_yaml)["access_key"])
     fids = client.search_files([search_tag])
     print(len(fids))
     fmds = list(
@@ -395,7 +394,7 @@ def analyze_sibling(sibling_file):
 def lint_tag(config_yaml, rule_file, measure=False):
     with open(rule_file) as f:
         rules = json.load(f)
-    client = hydrus.Client(load_config(config_yaml)["access_key"])
+    client = hydrus_api.Client(load_config(config_yaml)["access_key"])
     client_kwargs_list = []
     logging.basicConfig(level=logging.INFO)
     start = None
@@ -434,7 +433,7 @@ def lint_tag(config_yaml, rule_file, measure=False):
                 search_tags_list = remove_tags
         try:
             fids = client.search_files(search_tags_list)
-        except hydrus.MissingParameter:
+        except hydrus_api.MissingParameter:
             logging.error("MissingParameter, rule:" + str(rules))
             continue
         ordered_rule_log = dict(
@@ -499,7 +498,7 @@ def lint_tag(config_yaml, rule_file, measure=False):
 @click.argument("boards", nargs=-1)
 @click.option("--exclude-video", is_flag=True)
 def send_board_archive(config_yaml, boards, exclude_video):
-    client = hydrus.Client(load_config(config_yaml)["access_key"])
+    client = hydrus_api.Client(load_config(config_yaml)["access_key"])
     for board in boards:
         tags: T.Set[str]
         for url, tags in tqdm.tqdm(get_4chan_archive_data(board, exclude_video)):
@@ -514,7 +513,7 @@ def send_board_archive(config_yaml, boards, exclude_video):
 @click.argument("config-yaml", type=click.Path(exists=True))
 @click.argument("data-uris")
 def add_data_uri(config_yaml, data_uris):
-    client = hydrus.Client(load_config(config_yaml)["access_key"])
+    client = hydrus_api.Client(load_config(config_yaml)["access_key"])
     for data_uri in data_uris.splitlines():
         data = base64.b64decode(data_uri.split(",", 1)[1])
         print(client.add_file(io.BytesIO(data)))
@@ -525,7 +524,7 @@ def add_data_uri(config_yaml, data_uris):
 @click.argument("hashes", nargs=-1)
 @click.option("--interactive-tag", is_flag=True)
 def tag_hashes(config_yaml, hashes, interactive_tag):
-    client = hydrus.Client(load_config(config_yaml).get("access_key", None))
+    client = hydrus_api.Client(load_config(config_yaml).get("access_key", None))
     if interactive_tag:
         if not (tag := input("input tag:")):
             raise ValueError("No tag given on interactive-tag")
@@ -548,7 +547,7 @@ def crop(im, height, width):
 def split_images(config_yaml, hashes, width, height):
     if width == 1 and height == 1:
         raise ValueError("width and height = 1")
-    client = hydrus.Client(load_config(config_yaml).get("access_key", None))
+    client = hydrus_api.Client(load_config(config_yaml).get("access_key", None))
     for hash_ in hashes:
         img = Image.open(io.BytesIO(client.get_file(hash_).content))
         for piece in crop(img, img.size[1] // height, img.size[0] // width):
